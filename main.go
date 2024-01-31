@@ -26,7 +26,18 @@ var (
 
 func main() {
 
+	fmt.Println("Parsing flags...")
+
 	flag.Parse()
+
+	if notifyBaseUrl != nil && *notifyBaseUrl != "" && notifyKey != nil && *notifyKey != "" {
+		fmt.Println("Pushdeer notify configuration is enabled. Test notification sent.")
+		notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Startup successful.", "SCIM container is running.")
+	} else {
+		fmt.Println("Pushdeer notify configuration is disabled.")
+	}
+
+	fmt.Println("Running...")
 
 	for {
 		// 获取当前最近的15分钟时间
@@ -45,6 +56,9 @@ func main() {
 
 		// 获取一个半小时前至一个小时45分钟前范围内的最新云图（不获取当前最新的，以防更新不及时导致获取失败）
 		imageURL := buildImageURL(oneHour30MinutesAgo)
+
+		fmt.Println("Request " + imageURL)
+
 		err := downloadImage(imageURL)
 		if err != nil {
 			fmt.Println("Error downloading image:", err)
@@ -52,6 +66,7 @@ func main() {
 		}
 
 		// Wait for the next update
+		fmt.Println("Sleeping...")
 		time.Sleep(updateDelay)
 	}
 }
