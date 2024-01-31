@@ -16,10 +16,14 @@ go build -o main
 ### 拉取镜像
 
 ```zsh
-docker pull sunwish/satellite_cloud_image_monitor:latest
+docker pull sunwish/satellite_cloud_image_monitor_amd64:latest
 ```
 
-## 运行容器
+> arm64版本可拉取`sunwish/satellite_cloud_image_monitor:v1.0.0`
+>
+> 理论上不再更新arm架构的镜像，如有更新需求烦请自行构建。
+
+### 运行容器
 
 notifyBaseUrl与notifyKey参数为可选，如需配置异常提醒，请在启动参数配置此两参数，具体参见Pushdeer相关文档。
 
