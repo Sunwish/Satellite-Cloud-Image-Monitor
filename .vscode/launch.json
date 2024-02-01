@@ -12,13 +12,6 @@
             "program": "${workspaceFolder}",
             "env": {},
             "args": [
-                "-baseURL", "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/SEC/china/",
-                "-dateFormat", "2006/20060102/",
-                "-fileNamePrefix", "FY4B_china_",
-                "-fileNameFormat", "20060102150400.JPG",
-                "-outputDir", "./archived",
-                "-notifyBaseUrl", "",
-                "-notifyKey", "",
             ]
           }
     ]

@@ -3,33 +3,42 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path"
+	"regexp"
+	"strings"
 	"time"
 )
 
 var (
-	baseURL        = flag.String("baseURL", "https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/SEC/china/", "Image Base URL")
-	dateFormat     = flag.String("dateFormat", "2006/20060102/", "Date directory path format")
-	fileNamePrefix = flag.String("fileNamePrefix", "FY4B_china_", "File name prefix")
-	fileNameFormat = flag.String("fileNameFormat", "20060102150400.JPG", "File name format")
-	outputDir      = flag.String("outputDir", "./archived", "Output directory path")
-	updateDelay    = 15 * time.Minute
+	xmlURL      = flag.String("xmlURL", "http://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/SEC/xml/FY4B-china-72h.xml", "XML URL")
+	checkCount  = flag.Int("checkCount", 5, "XML image check count")
+	dateFormat  = flag.String("dateFormat", "2006/20060102/", "Date directory path format")
+	outputDir   = flag.String("outputDir", "./archived", "Output directory path")
+	filterReg   = flag.String("filterReg", ".*thumb.*", "Image name filter regular expression")
+	updateDelay = 15 * time.Minute
 
 	// Pushdeer notify configuration
 	notifyBaseUrl = flag.String("notifyBaseUrl", "", "Pushdeer Notify Base URL")
 	notifyKey     = flag.String("notifyKey", "", "Pushdeer Notify Key")
+	notifyPrefix  = flag.String("notifyTitlePrfix", "[CloudMonitor] ", "Pushdeer notify title prefix")
 )
 
 func main() {
-
 	fmt.Println("Parsing flags...")
 
 	flag.Parse()
 
+	// 编译正则表达式
+	regex, err := regexp.Compile(*filterReg)
+	regEnable := true
+	if err != nil {
+		regEnable = false
+		fmt.Println("Error compiling filter regular expression, regex filter disabled. Error: ", err)
+		notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error compiling filter regular expression", err.Error())
+	}
+
+	// 检查Pushdeer推送配置
 	if notifyBaseUrl != nil && *notifyBaseUrl != "" && notifyKey != nil && *notifyKey != "" {
 		fmt.Println("Pushdeer notify configuration is enabled. Test notification sent.")
 		notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Startup successful.", "SCIM container is running.")
@@ -39,95 +48,64 @@ func main() {
 
 	fmt.Println("Running...")
 
+	// 获取云图列表，并记录checkCount范围内未下载的图像
 	for {
-		// 获取当前最近的15分钟时间
-		currentTimeUTC := time.Now().UTC()
-		roundedTime := time.Date(
-			currentTimeUTC.Year(),
-			currentTimeUTC.Month(),
-			currentTimeUTC.Day(),
-			currentTimeUTC.Hour(),
-			currentTimeUTC.Minute()/15*15, // 取最近的15分钟时间
-			0,
-			0,
-			time.UTC,
-		)
-		oneHour30MinutesAgo := roundedTime.Add(-1*time.Hour - 30*time.Minute)
-
-		// 获取一个半小时前至一个小时45分钟前范围内的最新云图（不获取当前最新的，以防更新不及时导致获取失败）
-		imageURL := buildImageURL(oneHour30MinutesAgo)
-
-		fmt.Println("Request " + imageURL)
-
-		err := downloadImage(imageURL)
+		imgList, err := getImageList(*xmlURL)
 		if err != nil {
-			fmt.Println("Error downloading image:", err)
-			notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error downloading image", err.Error())
+			fmt.Println("Error getting or parsing XML, will retry after 10s. Error: ", err)
+			notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error parsing XML", err.Error())
+			time.Sleep(10 * time.Second)
+			continue
 		}
 
-		// Wait for the next update
-		fmt.Println("Sleeping...")
+		downloadInfos := make([]DownloadInfo, 0)
+
+		checkedCount := 0
+		for i := 0; i < len(imgList.Images) && checkedCount < *checkCount; i++ {
+			image := imgList.Images[i]
+
+			// 按正则过滤特定名称图像
+			fileName := path.Base(image.URL)
+			if regEnable && regex.MatchString(fileName) {
+				continue
+			}
+
+			// 检查图像是否已下载
+			localDir := path.Join(*outputDir, strings.Join(strings.Split(imgList.Name, " "), "-"), parseXMLTimeToTimePath(image.Time))
+			localFilePath := path.Join(localDir, fileName)
+
+			// 使用os.Stat检查文件是否存在
+			_, err := os.Stat(localFilePath)
+
+			// 若本地图像不存在则下载图像
+			if os.IsNotExist(err) {
+				downloadInfos = append(downloadInfos, DownloadInfo{image.URL, localDir})
+			}
+
+			checkedCount++
+		}
+
+		// 下载checkCount范围内未下载的图像
+		fmt.Printf("Found %d new cloud image(s).\n", len(downloadInfos))
+		for _, downloadInfo := range downloadInfos {
+			go func(info DownloadInfo) {
+				fmt.Printf("Request %s\n", info.URL)
+				err := downloadImage(info.URL, info.LocalDir)
+				if err != nil {
+					fmt.Println("Error downloading image:", err)
+					notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error downloading image", "URL: "+info.URL+"\n\n"+"ERR: "+err.Error())
+				}
+			}(downloadInfo)
+		}
+
+		// 打印信息
+		fmt.Print("Monitor is sleeping")
+		if len(downloadInfos) > 0 {
+			fmt.Print(" and starting download new image(s)")
+		}
+		fmt.Println(".")
+
+		// 等待下次更新
 		time.Sleep(updateDelay)
 	}
-}
-
-func buildImageURL(t time.Time) string {
-	datePath := t.Format(*dateFormat)
-	fileName := *fileNamePrefix + t.Format(*fileNameFormat)
-	return *baseURL + datePath + fileName
-}
-
-func downloadImage(url string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP request failed with status code %d", resp.StatusCode)
-	}
-
-	// Create the "archived" directory if it doesn't exist
-	if err := os.MkdirAll(*outputDir, os.ModePerm); err != nil {
-		return err
-	}
-
-	// Create the file with the same name as in the URL
-	filePath := path.Join(*outputDir, path.Base(url))
-	file, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Copy the content of the response body to the file
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Downloaded %s\n", filePath)
-	return nil
-}
-
-func notify(baseUrl string, key string, title string, content string) {
-	if baseUrl == "" {
-		fmt.Println("消息推送失败：notifyBaseUrl为空")
-		return
-	}
-
-	if key == "" {
-		fmt.Println("消息推送失败：notifyKey为空")
-		return
-	}
-
-	// 发起GET请求
-	fullUrl := baseUrl + "push?pushkey=" + key + "&text=" + url.QueryEscape(title) + "&desp=" + url.QueryEscape(content) + "&type=markdown"
-	response, err := http.Get(fullUrl)
-	if err != nil {
-		fmt.Println("消息推送失败：", err)
-		return
-	}
-	defer response.Body.Close()
 }

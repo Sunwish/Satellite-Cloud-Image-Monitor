@@ -3,12 +3,6 @@ FROM golang:latest
 
 LABEL maintainer="Sunwish <isunwish@gmail.com>"
 
-# 配置构建linux amd64
-ENV GOARCH=amd64
-ENV GOHOSTARCH=amd64
-ENV GOOS=linux
-ENV GOHOSTOS=linux
-
 # 设置工作目录
 WORKDIR /build
 
