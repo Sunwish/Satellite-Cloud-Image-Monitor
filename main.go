@@ -21,7 +21,7 @@ var (
 	// Pushdeer notify configuration
 	notifyBaseUrl = flag.String("notifyBaseUrl", "", "Pushdeer Notify Base URL")
 	notifyKey     = flag.String("notifyKey", "", "Pushdeer Notify Key")
-	notifyPrefix  = flag.String("notifyTitlePrfix", "[CloudMonitor] ", "Pushdeer notify title prefix")
+	notifyPrefix  = flag.String("notifyPrefix", "[CloudMonitor]", "Pushdeer notify title prefix")
 )
 
 func main() {
@@ -35,13 +35,13 @@ func main() {
 	if err != nil {
 		regEnable = false
 		fmt.Println("Error compiling filter regular expression, regex filter disabled. Error: ", err)
-		notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error compiling filter regular expression", err.Error())
+		notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Error compiling filter regular expression", err.Error())
 	}
 
 	// 检查Pushdeer推送配置
 	if notifyBaseUrl != nil && *notifyBaseUrl != "" && notifyKey != nil && *notifyKey != "" {
 		fmt.Println("Pushdeer notify configuration is enabled. Test notification sent.")
-		notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Startup successful.", "SCIM container is running.")
+		notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Startup successful.", "SCIM container is running.")
 	} else {
 		fmt.Println("Pushdeer notify configuration is disabled.")
 	}
@@ -53,7 +53,7 @@ func main() {
 		imgList, err := getImageList(*xmlURL)
 		if err != nil {
 			fmt.Println("Error getting or parsing XML, will retry after 10s. Error: ", err)
-			notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error parsing XML", err.Error())
+			notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Error parsing XML", err.Error())
 			time.Sleep(10 * time.Second)
 			continue
 		}
@@ -93,7 +93,7 @@ func main() {
 				err := downloadImage(info.URL, info.LocalDir)
 				if err != nil {
 					fmt.Println("Error downloading image:", err)
-					notify(*notifyBaseUrl, *notifyKey, "[CloudMonitor] Error downloading image", "URL: "+info.URL+"\n\n"+"ERR: "+err.Error())
+					notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Error downloading image", "URL: "+info.URL+"\n\n"+"ERR: "+err.Error())
 				}
 			}(downloadInfo)
 		}
