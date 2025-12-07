@@ -10,30 +10,32 @@ import (
 	"path"
 )
 
-func getImageList(url string) (ImageList, error) {
+func getImageList(url string) (ImageList, string, error) {
 	// 创建结构体实例
 	var imageList ImageList
+	var xmlString string
 
 	// 发送 HTTP 请求
 	resp, err := http.Get(url)
 	if err != nil {
-		return imageList, fmt.Errorf("Error fetching XML: %s", err.Error())
+		return imageList, xmlString, fmt.Errorf("Error fetching XML: %s", err.Error())
 	}
 	defer resp.Body.Close()
 
 	// 读取 HTTP 响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return imageList, fmt.Errorf("Error reading response body: %s", err)
+		return imageList, xmlString, fmt.Errorf("Error reading response body: %s", err)
 	}
 
 	// 解析 XML
 	err = xml.Unmarshal(body, &imageList)
+	xmlString = string(body)
 	if err != nil {
-		return imageList, fmt.Errorf("Error parsing XML: %s", err)
+		return imageList, xmlString, fmt.Errorf("Error parsing XML: %s", err)
 	}
 
-	return imageList, nil
+	return imageList, xmlString, nil
 }
 
 func downloadImage(url string, dir string) error {

@@ -49,14 +49,31 @@ func main() {
 	fmt.Println("Running...")
 
 	// 获取云图列表，并记录checkCount范围内未下载的图像
+	firstNotify := true // 对于会自动重试的异常通知，恢复正常前只发送一次
 	for {
-		imgList, err := getImageList(*xmlURL)
+		fmt.Println("Getting and parsing XML...")
+		imgList, xmlString, err := getImageList(*xmlURL)
 		if err != nil {
 			fmt.Println("Error getting or parsing XML, will retry after 10s. Error: ", err)
-			notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Error parsing XML", err.Error())
+			if firstNotify {
+				firstNotify = false
+				notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" Error parsing XML", "ERR: "+err.Error()+"\n\nXMLStr: \n\n"+xmlString)
+			}
 			time.Sleep(10 * time.Second)
 			continue
 		}
+		if len(imgList.Images) < 1 {
+			fmt.Println("No image found in XML, will retry after 10s.")
+			if firstNotify {
+				firstNotify = false
+				notify(*notifyBaseUrl, *notifyKey, *notifyPrefix+" XML parsing exception.", "XMLStr: \n\n"+xmlString)
+			}
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		firstNotify = true
+
+		fmt.Printf("Count of images in imgList is %d. The newest image is %s\n", len(imgList.Images), imgList.Images[0].Time)
 
 		downloadInfos := make([]DownloadInfo, 0)
 

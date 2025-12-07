@@ -12,6 +12,7 @@
             "program": "${workspaceFolder}",
             "env": {},
             "args": [
+                "-xmlURL", "http://img.nsmc.org.cn/PORTAL/NSMC/XML/FY2H/ETV_SEC.xml"
             ]
           }
     ]
